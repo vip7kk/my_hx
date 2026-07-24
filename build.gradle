@@ -11,6 +11,10 @@ allprojects {
         mavenLocal()
         maven {
           url = uri("https://maven.pkg.github.com/vip7kk/my_hx")
+          credentials {
+              username = System.getenv('DPROTECT_GITHUB_USERNAME') ?: findProperty('githubUsername')
+              password = System.getenv('DPROTECT_GITHUB_TOKEN') ?: findProperty('githubToken')
+          }
         }
     }
 }
@@ -106,6 +110,8 @@ allprojects { Project project ->
             configure(project) {
                 javadoc {
                     options.addStringOption('Xdoclint:none', '-quiet')
+                    options.encoding = 'UTF-8'
+                    options.charSet = 'UTF-8'
                 }
                 java {
                     toolchain {
