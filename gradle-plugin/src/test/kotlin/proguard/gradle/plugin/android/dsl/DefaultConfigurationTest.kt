@@ -22,10 +22,11 @@ class DefaultConfigurationTest : FreeSpec({
             addModule(applicationModule("app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
+                namespace 'com.example.app'
+                compileSdk 33
                     compileOptions {
                     sourceCompatibility JavaVersion.VERSION_1_8
                     targetCompatibility JavaVersion.VERSION_1_8
@@ -38,7 +39,7 @@ class DefaultConfigurationTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     release {
                         defaultConfiguration 'non-existing'

@@ -23,10 +23,11 @@ class ConfigurationOrderTest : FreeSpec({
             addModule(applicationModule("app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
+                namespace 'com.example.app'
+                compileSdk 33
 
                 buildTypes {
                     release {
@@ -35,7 +36,7 @@ class ConfigurationOrderTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     release {
                         configuration 'proguard-project1.txt'

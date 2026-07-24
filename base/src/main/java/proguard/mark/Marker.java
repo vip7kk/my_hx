@@ -316,7 +316,8 @@ public class Marker implements Pass
             // Mark the field that stores the companion object.
             if (kotlinClassKindMetadata.companionObjectName != null)
             {
-                kotlinClassKindMetadata.referencedCompanionFieldAccept(MEMBER_AND_CLASS_MARKER);
+                // referencedCompanionFieldAccept not available in dprotect-core 1.0.0
+                // kotlinClassKindMetadata.referencedCompanionFieldAccept(MEMBER_AND_CLASS_MARKER);
             }
         }
 

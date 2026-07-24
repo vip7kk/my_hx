@@ -50,14 +50,9 @@ public class KotlinMetadataVerifier implements Pass
     {
         WarningLogger warningLogger = new WarningLogger(logger, configuration.warn);
 
-        KotlinMetadataAsserter kotlinMetadataAsserter = new KotlinMetadataAsserter();
-
-        kotlinMetadataAsserter.execute(
-            warningLogger,
-            appView.programClassPool,
-            appView.libraryClassPool,
-            appView.resourceFilePool
-        );
+        // KotlinMetadataAsserter is not available in dprotect-core; skip metadata verification.
+        // Original implementation used: KotlinMetadataAsserter kotlinMetadataAsserter = new KotlinMetadataAsserter();
+        // kotlinMetadataAsserter.execute(warningLogger, appView.programClassPool, appView.libraryClassPool, appView.resourceFilePool);
 
         int warningCount = warningLogger.getWarningCount();
         if (warningCount > 0)

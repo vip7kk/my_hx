@@ -27,10 +27,11 @@ class AaptRulesTest : FreeSpec({
             addModule(applicationModule("app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
+                namespace 'com.example.app'
+                compileSdk 33
 
                 buildTypes {
                     release {
@@ -39,7 +40,7 @@ class AaptRulesTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     debug {
                         defaultConfiguration 'proguard-android-debug.txt'
@@ -72,10 +73,11 @@ class AaptRulesTest : FreeSpec({
             addModule(applicationModule("app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
+                namespace 'com.example.app'
+                compileSdk 33
 
                 buildTypes {
                     release {
@@ -86,7 +88,7 @@ class AaptRulesTest : FreeSpec({
                 aaptOptions.additionalParameters = ["--proguard", (new File(rootDir, "test.pro")).absolutePath]
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     debug {
                         defaultConfiguration 'proguard-android-debug.txt'
@@ -124,10 +126,11 @@ class AaptRulesTest : FreeSpec({
             addModule(applicationModule("app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
+                namespace 'com.example.app'
+                compileSdk 33
 
                 defaultConfig {
                     versionCode 1
@@ -140,7 +143,7 @@ class AaptRulesTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     debug {
                         defaultConfiguration 'proguard-android-debug.txt'
@@ -201,10 +204,11 @@ class AaptRulesTest : FreeSpec({
             addModule(applicationModule("app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
+                namespace 'com.example.app'
+                compileSdk 33
 
                 buildTypes {
                     release {
@@ -227,7 +231,7 @@ class AaptRulesTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     demoDebug {
                         defaultConfiguration 'proguard-android-debug.txt'

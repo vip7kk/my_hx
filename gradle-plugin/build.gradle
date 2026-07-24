@@ -5,7 +5,7 @@ plugins {
     id 'java-gradle-plugin'
     id 'org.jetbrains.kotlin.jvm' version "$kotlinVersion"
     id 'maven-publish'
-    id 'org.jlleitschuh.gradle.ktlint' version '9.2.1'
+    id 'org.jlleitschuh.gradle.ktlint' version '11.4.2'
 }
 
 repositories {
@@ -13,7 +13,7 @@ repositories {
     mavenCentral()
 }
 
-def agpVersion = '4.1.0'
+def agpVersion = '8.1.1'
 
 gradlePlugin {
     plugins {
@@ -25,38 +25,44 @@ gradlePlugin {
 }
 
 compileKotlin {
-    kotlinOptions.jvmTarget = "1.8"
+    kotlinOptions.jvmTarget = "17"
 }
 
 compileTestKotlin {
-    kotlinOptions.jvmTarget = "1.8"
+    kotlinOptions.jvmTarget = "17"
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
 }
 
 configurations {
-    fatJar.extendsFrom(compile)
+    fatJar.extendsFrom(implementation)
 }
 
 dependencies {
     api project(':base')
-    // TODO update to 4.2 or 7.0 API
     compileOnly ("com.android.tools.build:gradle:$agpVersion") {
         exclude module: 'proguard-gradle'
         exclude module: 'proguard-base'
     }
+    compileOnly "com.android.tools.build:gradle-api:$agpVersion"
     implementation 'com.github.zafarkhaja:java-semver:0.9.0'
     testCompileOnly ("com.android.tools.build:gradle:$agpVersion") {
         exclude module: 'proguard-gradle'
         exclude module: 'proguard-base'
     }
-    testImplementation 'io.kotest:kotest-runner-junit5-jvm:4.6.0'   // for kotest framework
-    testImplementation 'io.kotest:kotest-assertions-core-jvm:4.6.0' // for kotest core jvm assertions
-    testImplementation 'io.kotest:kotest-property-jvm:4.6.0'        // for kotest property test
+    testCompileOnly "com.android.tools.build:gradle-api:$agpVersion"
+    testImplementation 'io.kotest:kotest-runner-junit5-jvm:5.8.0'
+    testImplementation 'io.kotest:kotest-assertions-core-jvm:5.8.0'
+    testImplementation 'io.kotest:kotest-property-jvm:5.8.0'
 
-    testImplementation "io.mockk:mockk:1.12.0"
-    testImplementation "commons-io:commons-io:2.8.0"
+    testImplementation "io.mockk:mockk:1.13.8"
+    testImplementation "commons-io:commons-io:2.11.0"
 
     fatJar project(":base")
-    // This library is used to parse the android gradle plugin version at runtime.
     fatJar 'com.github.zafarkhaja:java-semver:0.9.0'
 }
 
@@ -112,14 +118,16 @@ tasks.withType(Test).configureEach {
 afterEvaluate {
     /*  This project gets two publications:
         - "pluginMaven" is the default from `java-gradle-plugin`
-          and must not be automatically published.
+          and must not be automatically published to remote repos.
         - "<project.name>" is created by ProGuard custom logic
           and should have its artifact ID adjusted.
-        - we also disable publishing of plugin markers.
+        - we disable publishing of pluginMaven and plugin markers
+          to Sonatype only, but KEEP GitHub Packages so the
+          plugins { } DSL works with GitHub Packages.
      */
     tasks.withType(AbstractPublishToMaven).matching { task ->
         task.publication.name == 'pluginMaven' ||
-            task.name =~ /^publish(.*)PluginMarkerMavenPublicationTo(GithubRepository|MavenLocal|SonatypeRepository)$/
+            task.name =~ /^publish(.*)PluginMarkerMavenPublicationToSonatypeRepository$/
     } each {task ->
         task.enabled = false
     }

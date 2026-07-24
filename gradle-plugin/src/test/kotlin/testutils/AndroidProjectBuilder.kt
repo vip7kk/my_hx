@@ -173,18 +173,23 @@ enum class ProjectType(val plugin: String) {
 private fun defaultBuildDotGradle(type: ProjectType) = """
     plugins {
         id '${type.plugin}'
-        id 'com.guardsquare.proguard'
+        id 're.obfuscator.dprotect'
     }
     android {
-        compileSdkVersion 29
+        namespace '${if (type == ProjectType.APPLICATION) "com.example.app" else "com.example.lib"}'
+        compileSdk 33
         defaultConfig {
-            targetSdkVersion 29
-            minSdkVersion 14
+            targetSdk 33
+            minSdk 21
             versionCode 1
         }
         buildTypes {
-            release {}
-            debug {}
+            release {
+                minifyEnabled false
+            }
+            debug {
+                minifyEnabled false
+            }
         }
     }
 """.trimIndent()
@@ -192,18 +197,23 @@ private fun defaultBuildDotGradle(type: ProjectType) = """
 private val defaultBaseFeatureBuildDotGradle = """
     plugins {
         id 'com.android.application'
-        id 'com.guardsquare.proguard'
+        id 're.obfuscator.dprotect'
     }
     android {
-        compileSdkVersion 29
+        namespace 'com.example.app'
+        compileSdk 33
         defaultConfig {
-            targetSdkVersion 29
-            minSdkVersion 14
+            targetSdk 33
+            minSdk 21
             versionCode 1
         }
         buildTypes {
-            release {}
-            debug {}
+            release {
+                minifyEnabled false
+            }
+            debug {
+                minifyEnabled false
+            }
         }
         dynamicFeatures = [':feature']
     }
@@ -212,17 +222,22 @@ private val defaultBaseFeatureBuildDotGradle = """
 private val defaultDynamicFeatureBuildDotGradle = """
     plugins {
         id 'com.android.dynamic-feature'
-        id 'com.guardsquare.proguard'
+        id 're.obfuscator.dprotect'
     }
     android {
-        compileSdkVersion 29
+        namespace 'com.example.feature'
+        compileSdk 33
         defaultConfig {
-            targetSdkVersion 29
-            minSdkVersion 14
+            targetSdk 33
+            minSdk 21
         }
         buildTypes {
-            release {}
-            debug {}
+            release {
+                minifyEnabled false
+            }
+            debug {
+                minifyEnabled false
+            }
         }
     }
     dependencies {

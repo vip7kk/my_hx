@@ -25,7 +25,7 @@ class ProGuardPluginTest : FreeSpec({
         val project = autoClose(AndroidProject().apply {
             addModule(applicationModule("app", buildDotGradle = """
                     plugins {
-                        id 'com.guardsquare.proguard'
+                        id 're.obfuscator.dprotect'
                     }
                     """.trimIndent()))
         }.create())
@@ -34,7 +34,7 @@ class ProGuardPluginTest : FreeSpec({
             val result = createGradleRunner(project.rootDir, testKitDir).buildAndFail()
 
             "Then the build should fail" {
-                result.output shouldContain "Failed to apply plugin 'com.guardsquare.proguard'"
+                result.output shouldContain "Failed to apply plugin 're.obfuscator.dprotect'"
             }
         }
     }
@@ -64,11 +64,11 @@ class ProGuardPluginTest : FreeSpec({
                 addModule(applicationModule("app", buildDotGradle = """
                             plugins {
                                 id 'com.android.application'
-                                id 'com.guardsquare.proguard'
+                                id 're.obfuscator.dprotect'
                             }
 
                             android {
-                                compileSdkVersion 30
+                                compileSdk 33
 
                                 buildTypes {
                                     release {}
@@ -76,7 +76,7 @@ class ProGuardPluginTest : FreeSpec({
                                 }
                             }
 
-                            proguard {
+                            dProtect {
                                 configurations {
                                     release {}
                                 }
@@ -88,7 +88,7 @@ class ProGuardPluginTest : FreeSpec({
             val result = createGradleRunner(project.rootDir, testKitDir).buildAndFail()
 
             "Then the build should fail" {
-                result.output shouldContain "The ProGuard plugin only supports Android plugin 4 and higher."
+                result.output shouldContain "requires AGP 7.0 or higher"
             }
         }
     }
@@ -98,11 +98,12 @@ class ProGuardPluginTest : FreeSpec({
             addModule(libraryModule("lib", buildDotGradle = """
             plugins {
                 id 'com.android.library'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
 
             android {
-                compileSdkVersion 30
+                namespace 'com.example.lib'
+                compileSdk 33
 
                 buildTypes {
                     release {
@@ -112,7 +113,7 @@ class ProGuardPluginTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     release {
                         defaultConfiguration 'proguard-android.txt'

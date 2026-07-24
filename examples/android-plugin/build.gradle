@@ -1,20 +1,20 @@
-// This build file illustrates how to apply ProGuard in the Android build
-// process, with ProGuard's own plugin instead of the built-in minification
+// This build file illustrates how to apply dProtect in the Android build
+// process, with dProtect's own plugin instead of the built-in minification
 // support of the Android Gradle plugin.
 buildscript {
     repositories {
         mavenLocal()   // For local testing
         google()       // For the Android Gradle plugin.
-        mavenCentral() // For the ProGuard Gradle Plugin and anything else.
+        mavenCentral() // For the dProtect Gradle Plugin and anything else.
     }
     dependencies {
-        classpath 'com.guardsquare:proguard-gradle:7.3.0'
-        classpath 'com.android.tools.build:gradle:7.0.0'
+        classpath 're.obfuscator:dprotect-gradle:1.1.0-agp8'
+        classpath 'com.android.tools.build:gradle:8.1.1'
     }
 }
 
 apply plugin: 'com.android.application'
-apply plugin: 'com.guardsquare.proguard'
+apply plugin: 're.obfuscator.dprotect'
 
 repositories {
     google()       // For the Android plugin.
@@ -22,7 +22,8 @@ repositories {
 }
 
 android {
-    compileSdkVersion 28
+    namespace 'com.example'
+    compileSdk 33
 
     signingConfigs {
         debug {
@@ -34,8 +35,8 @@ android {
     }
 
     defaultConfig {
-        minSdkVersion    11
-        targetSdkVersion 29
+        minSdk    21
+        targetSdk 33
         signingConfig signingConfigs.debug
     }
 
@@ -47,7 +48,7 @@ android {
             aidl.srcDirs         = ['src']
             renderscript.srcDirs = ['src']
             res.srcDirs          = ['res']
-            assets.srcDirs       = ['assets']
+            assets.srcDirs        = ['assets']
         }
     }
 
@@ -63,7 +64,7 @@ android {
     }
 }
 
-proguard {
+dProtect {
     configurations {
         release {
             defaultConfiguration 'proguard-android-optimize.txt'

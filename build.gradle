@@ -10,7 +10,7 @@ allprojects {
     repositories {
         mavenLocal()
         maven {
-          url = uri("https://maven.pkg.github.com/open-obfuscator/dProtect")
+          url = uri("https://maven.pkg.github.com/vip7kk/my_hx")
         }
     }
 }
@@ -41,10 +41,10 @@ allprojects { Project project ->
                     repositories {
                         maven {
                             name = 'Github'
-                            url = uri('https://maven.pkg.github.com/open-obfuscator/dProtect')
+                            url = uri('https://maven.pkg.github.com/vip7kk/my_hx')
                             credentials {
-                                username = System.getenv('DPROTECT_GITHUB_USERNAME')
-                                password = System.getenv('DPROTECT_GITHUB_TOKEN')
+                                username = System.getenv('DPROTECT_GITHUB_USERNAME') ?: findProperty('githubUsername')
+                                password = System.getenv('DPROTECT_GITHUB_TOKEN') ?: findProperty('githubToken')
                             }
                         }
                     }
@@ -65,7 +65,7 @@ allprojects { Project project ->
                             pom {
                                 artifactId = "dprotect-$project.name"
                                 name = "$group:$artifactId"
-                                url = 'https://obfuscator.re/dprotect'
+                                url = 'https://github.com/vip7kk/my_hx'
                                 licenses {
                                     license {
                                         name = 'GNU General Public License, Version 2'
@@ -75,11 +75,11 @@ allprojects { Project project ->
                                 }
                                 issueManagement {
                                     system = 'Github Tracker'
-                                    url = 'https://github.com/open-obfuscator/dProtect/issues'
+                                    url = 'https://github.com/vip7kk/my_hx/issues'
                                 }
                                 scm {
-                                    url = 'https://github.com/open-obfuscator/dProtect.git'
-                                    connection = 'scm:git:https://github.com/open-obfuscator/dProtect.git'
+                                    url = 'https://github.com/vip7kk/my_hx.git'
+                                    connection = 'scm:git:https://github.com/vip7kk/my_hx.git'
                                 }
                                 developers {
                                     developer {
@@ -109,7 +109,7 @@ allprojects { Project project ->
                 }
                 java {
                     toolchain {
-                        languageVersion.set(JavaLanguageVersion.of(8))
+                        languageVersion.set(JavaLanguageVersion.of(17))
                     }
                     withJavadocJar()
                     withSourcesJar()

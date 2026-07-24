@@ -24,10 +24,11 @@ class ConfigurationTest : FreeSpec({
             addModule(applicationModule("app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
+                namespace 'com.example.app'
+                compileSdk 33
 
                 buildTypes {
                     release {
@@ -36,7 +37,7 @@ class ConfigurationTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     release {
                         configuration 'non-existing-file.txt'
@@ -59,10 +60,11 @@ class ConfigurationTest : FreeSpec({
             addModule(applicationModule("app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
+                namespace 'com.example.app'
+                compileSdk 33
 
                 buildTypes {
                     release {
@@ -71,7 +73,7 @@ class ConfigurationTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     debug {
                         defaultConfiguration 'proguard-android-debug.txt'
@@ -94,10 +96,11 @@ class ConfigurationTest : FreeSpec({
             addModule(applicationModule("app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
+                namespace 'com.example.app'
+                compileSdk 33
 
                 buildTypes {
                     release {
@@ -106,7 +109,7 @@ class ConfigurationTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     release {
                         defaultConfiguration 'proguard-android.txt'
@@ -119,7 +122,7 @@ class ConfigurationTest : FreeSpec({
             val result = createGradleRunner(project.rootDir, testKitDir).buildAndFail()
 
             "Then the build should fail with an error message" {
-                result.output shouldContain "The option 'minifyEnabled' is set to 'true' for variant 'release', but should be 'false' for variants processed by ProGuard"
+                result.output shouldContain "minifyEnabled.*should be.*false".toRegex()
             }
         }
     }
@@ -129,10 +132,11 @@ class ConfigurationTest : FreeSpec({
             addModule(applicationModule("app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
+                namespace 'com.example.app'
+                compileSdk 33
 
                 buildTypes {
                     release {
@@ -141,7 +145,7 @@ class ConfigurationTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                 }
             }""".trimIndent()))
@@ -151,7 +155,7 @@ class ConfigurationTest : FreeSpec({
             val result = createGradleRunner(project.rootDir, testKitDir).buildAndFail()
 
             "Then the build should fail with an error message" {
-                result.output shouldContain "There are no configured variants in the 'proguard' block"
+                result.output shouldContain "There are no configured variants in the 'dProtect' block"
             }
         }
     }
@@ -161,10 +165,11 @@ class ConfigurationTest : FreeSpec({
             addModule(applicationModule("app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
+                namespace 'com.example.app'
+                compileSdk 33
 
                 buildTypes {
                     release {
@@ -173,7 +178,7 @@ class ConfigurationTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     foo {
                         defaultConfiguration 'proguard-android.txt'
@@ -196,10 +201,11 @@ class ConfigurationTest : FreeSpec({
             addModule(applicationModule("app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
+                namespace 'com.example.app'
+                compileSdk 33
 
                 buildTypes {
                     release {
@@ -208,7 +214,7 @@ class ConfigurationTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     foo {
                         defaultConfiguration 'proguard-android.txt'
@@ -234,10 +240,11 @@ class ConfigurationTest : FreeSpec({
             addModule(applicationModule("app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
+                namespace 'com.example.app'
+                compileSdk 33
 
                 buildTypes {
                     release {
@@ -260,7 +267,7 @@ class ConfigurationTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     fooRelease {
                         defaultConfiguration 'proguard-android.txt'

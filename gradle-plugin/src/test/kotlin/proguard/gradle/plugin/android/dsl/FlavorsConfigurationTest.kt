@@ -26,11 +26,12 @@ class FlavorsConfigurationTest : FreeSpec({
             addModule(applicationModule("app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
-                    compileOptions {
+                namespace 'com.example.app'
+                compileSdk 33
+                compileOptions {
                     sourceCompatibility JavaVersion.VERSION_1_8
                     targetCompatibility JavaVersion.VERSION_1_8
                 }
@@ -61,7 +62,7 @@ class FlavorsConfigurationTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     release {
                         defaultConfiguration 'proguard-android-optimize.txt'
@@ -77,13 +78,13 @@ class FlavorsConfigurationTest : FreeSpec({
         "When the build is executed" - {
             val buildResult = createGradleRunner(project.rootDir, testKitDir, "assemble").build()
             "ProGuard should be executed for each matching build variant" {
-                buildResult.task(":app:transformClassesAndResourcesWithProguardTransformForDemoRelease")?.outcome shouldBe SUCCESS
-                buildResult.task(":app:transformClassesAndResourcesWithProguardTransformForFullRelease")?.outcome shouldBe SUCCESS
-                buildResult.task(":app:transformClassesAndResourcesWithProguardTransformForDemoDebug")?.outcome shouldBe SUCCESS
+                buildResult.task(":app:proguardDemoRelease")?.outcome shouldBe SUCCESS
+                buildResult.task(":app:proguardFullRelease")?.outcome shouldBe SUCCESS
+                buildResult.task(":app:proguardDemoDebug")?.outcome shouldBe SUCCESS
             }
 
             "ProGuard should not be executed for non-matching build variants" {
-                buildResult.task(":app:transformClassesAndResourcesWithProguardTransformForFullDebug")?.outcome shouldBe null
+                buildResult.task(":app:proguardFullDebug")?.outcome shouldBe null
             }
 
             "AAPT rules should be generated" - {

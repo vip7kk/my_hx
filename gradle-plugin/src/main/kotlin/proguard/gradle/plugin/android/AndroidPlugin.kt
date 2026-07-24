@@ -2,7 +2,7 @@
  * ProGuard -- shrinking, optimization, obfuscation, and preverification
  *             of Java bytecode.
  *
- * Copyright (c) 2002-2021 Guardsquare NV
+ * Copyright (c) 2002-2024 Guardsquare NV
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -21,14 +21,10 @@
 
 package proguard.gradle.plugin.android
 
-import com.android.build.api.variant.VariantInfo
-import com.android.build.gradle.AppExtension
+import com.android.build.api.artifact.ScopedArtifact
+import com.android.build.api.variant.AndroidComponentsExtension
+import com.android.build.api.variant.ScopedArtifacts
 import com.android.build.gradle.BaseExtension
-import com.android.build.gradle.LibraryExtension
-import com.android.build.gradle.api.BaseVariant
-import com.android.build.gradle.internal.res.LinkApplicationAndroidResourcesTask
-import com.android.build.gradle.internal.tasks.factory.dependsOn
-import com.github.zafarkhaja.semver.Version
 import java.io.File
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
@@ -36,6 +32,7 @@ import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.attributes.Attribute
+import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
 import proguard.gradle.plugin.android.AndroidProjectType.ANDROID_APPLICATION
 import proguard.gradle.plugin.android.AndroidProjectType.ANDROID_LIBRARY
@@ -46,152 +43,326 @@ import proguard.gradle.plugin.android.dsl.VariantConfiguration
 import proguard.gradle.plugin.android.tasks.CollectConsumerRulesTask
 import proguard.gradle.plugin.android.tasks.ConsumerRuleFilterEntry
 import proguard.gradle.plugin.android.tasks.PrepareProguardConfigDirectoryTask
+import proguard.gradle.plugin.android.tasks.ProGuardAndroidTask
 import proguard.gradle.plugin.android.transforms.AndroidConsumerRulesTransform
 import proguard.gradle.plugin.android.transforms.ArchiveConsumerRulesTransform
 
-class AndroidPlugin(private val androidExtension: BaseExtension) : Plugin<Project> {
+/**
+ * Android plugin entry point for dProtect/ProGuard.
+ *
+ * In AGP 8.0+, the Transform API ([com.android.build.api.transform.Transform]) was
+ * removed. This plugin now uses the [ScopedArtifacts] API ([ScopedArtifact.CLASSES])
+ * to intercept all compiled classes and run ProGuard obfuscation via [ProGuardAndroidTask].
+ *
+ * The high-level flow for each variant:
+ * 1. [configureAapt] — ensures AAPT generates keep rules for ProGuard.
+ * 2. Consumer rules are collected from the variant's runtime configuration via
+ *    [CollectConsumerRulesTask] (unchanged from the original implementation).
+ * 3. [ProGuardAndroidTask] is registered via [ScopedArtifacts.forScope] + [toTransform]
+ *    to replace all compiled classes with ProGuard's obfuscated output.
+ * 4. Library jars (android.jar, provided-only / external dependencies) are wired
+ *    to the task for ProGuard's classpath resolution.
+ */
+class AndroidPlugin(
+    private val androidExtension: BaseExtension,
+    private val projectType: AndroidProjectType,
+) : Plugin<Project> {
 
     override fun apply(project: Project) {
-        val collectConsumerRulesTask = project.tasks.register(COLLECT_CONSUMER_RULES_TASK_NAME)
-        registerDependencyTransforms(project)
-        val proguardBlock = project.extensions.create<ProGuardAndroidExtension>("dProtect", ProGuardAndroidExtension::class.java, project)
+        val proguardBlock =
+            project.extensions.create("dProtect", ProGuardAndroidExtension::class.java, project)
 
-        val projectType = when (androidExtension) {
-            is AppExtension -> ANDROID_APPLICATION
-            is LibraryExtension -> ANDROID_LIBRARY
-            else -> throw GradleException("The ProGuard Gradle plugin can only be used on Android application and library projects")
-        }
-
+        // 1. Configure AAPT to generate ProGuard keep rules.
         configureAapt(project)
 
-        warnOldProguardVersion(project)
+        // 2. Register dependency transforms for consumer rule extraction (unchanged).
+        registerDependencyTransforms(project)
 
-        androidExtension.registerTransform(
-                ProGuardTransform(project, proguardBlock, projectType, androidExtension),
-                collectConsumerRulesTask)
+        // 3. Prepare the consumer-rules collection task (shared).
+        val collectConsumerRulesTask =
+            project.tasks.register(COLLECT_CONSUMER_RULES_TASK_NAME)
 
+        // 4. Determine the scope: apps obfuscate ALL classes (project + sub + ext);
+        //    libraries obfuscate only PROJECT classes.
+        val scope =
+            if (projectType == ANDROID_APPLICATION) {
+                ScopedArtifacts.Scope.ALL
+            } else {
+                ScopedArtifacts.Scope.PROJECT
+            }
+
+        // 5. Get the AndroidComponentsExtension (AGP 7.0+ new variant API).
+        val androidComponents =
+            project.extensions.findByType(AndroidComponentsExtension::class.java)
+                ?: throw GradleException(
+                    "AndroidComponentsExtension not found. dProtect requires AGP 7.0+ (recommended 8.0+).",
+                )
+
+        // 6. Register a ProGuard task for each variant that has a matching configuration.
+        androidComponents.onVariants { variant ->
+            val variantName = variant.name
+            val matchingConfiguration = proguardBlock.configurations.findVariantConfiguration(variantName)
+
+            if (matchingConfiguration != null) {
+
+                // Verify minify is disabled (ProGuard/dProtect handles obfuscation).
+                verifyNotMinified(project, variantName, androidExtension)
+
+                // Prepare the proguard config directory task (already registered in configureAapt).
+                val prepareConfigDirTask =
+                    project.tasks.named(
+                        "prepareProguardConfigDirectory",
+                        PrepareProguardConfigDirectoryTask::class.java,
+                    )
+
+                // ── Consumer rules collection ──
+                val consumerRulesConfig = createConsumerRulesConfiguration(project, variantName)
+                val collectTaskName = COLLECT_CONSUMER_RULES_TASK_NAME + variantName.replaceFirstChar { it.uppercase() }
+                val consumerRulesOutputDir =
+                    project.buildDir.resolve("intermediates/proguard/configs")
+
+                val collectTask =
+                    project.tasks.register(
+                        collectTaskName,
+                        CollectConsumerRulesTask::class.java,
+                    ) { task ->
+                        task.consumerRulesConfiguration = consumerRulesConfig
+                        task.consumerRuleFilter =
+                            parseConsumerRuleFilter(matchingConfiguration.consumerRuleFilter)
+                        task.outputFile =
+                            File(
+                                File(consumerRulesOutputDir, variantName),
+                                CONSUMER_RULES_PRO,
+                            )
+                    }
+
+                collectConsumerRulesTask.configure { it.dependsOn(collectTask) }
+
+                // ── ProGuard obfuscation task ──
+                val taskName = "proguard" + variantName.replaceFirstChar { it.uppercase() }
+                val taskProvider =
+                    project.tasks.register(taskName, ProGuardAndroidTask::class.java) { task ->
+                        task.variantName.set(variantName)
+
+                        // Configuration files (user .pro rules).
+                        task.configurationFiles.from(
+                            matchingConfiguration.configurations.map { project.file(it.path) },
+                        )
+
+                        // Consumer rules output (depends on collection task).
+                        task.consumerRules.from(collectTask.map { it.outputs.files })
+                        task.dependsOn(collectTask)
+
+                        // AAPT rules (may not exist yet at configuration time).
+                        task.aaptRules.from(
+                            project.provider {
+                                val aaptFile = getAaptRulesFile()
+                                if (aaptFile != null && File(aaptFile).exists()) {
+                                    project.files(aaptFile)
+                                } else {
+                                    project.files()
+                                }
+                            },
+                        )
+
+                        // Library jars.
+                        task.libraryJars.from(createLibraryJars(project, variantName))
+
+                        // Mapping / seeds / usage output.
+                        val outputDir =
+                            project.buildDir.resolve("outputs/proguard/$variantName/mapping")
+                        if (!outputDir.exists()) {
+                            outputDir.mkdirs()
+                        }
+                        task.mappingFile.set(File(outputDir, "mapping.txt"))
+                        task.seedsFile.set(File(outputDir, "seeds.txt"))
+                        task.usageFile.set(File(outputDir, "usage.txt"))
+
+                        // Output location (will be set by ScopedArtifacts).
+                        task.output.set(
+                            project.buildDir.resolve(
+                                "intermediates/proguard/$variantName/obfuscated.jar",
+                            ),
+                        )
+                    }
+
+                // ── Wire via ScopedArtifacts: replaces all compiled classes with obfuscated output ──
+                variant.artifacts
+                    .forScope(scope)
+                    .use(taskProvider)
+                    .toTransform(
+                        ScopedArtifact.CLASSES,
+                        { task -> task.allJars },
+                        { task -> task.allDirs },
+                        { task -> task.output },
+                    )
+
+                taskProvider.configure { task ->
+                    task.dependsOn(prepareConfigDirTask)
+                }
+            }
+        }
+
+        // 7. After evaluation, verify configuration files exist.
+        //    NOTE: We intentionally do NOT validate "unmatched variants" here.
+        //    In AGP 8.0+, the onVariants callback fires AFTER afterEvaluate,
+        //    so matchedConfigurations would always be empty at this point,
+        //    causing false "variant does not exist" errors.
         project.afterEvaluate {
-            if (proguardBlock.configurations.isEmpty())
-                throw GradleException("There are no configured variants in the 'proguard' block")
-
-            val matchedConfigurations = mutableListOf<VariantConfiguration>()
-
-            when (androidExtension) {
-                is AppExtension -> androidExtension.applicationVariants.all { applicationVariant ->
-                    setupVariant(proguardBlock, applicationVariant, collectConsumerRulesTask, project)?.let {
-                        matchedConfigurations.add(it)
-                    }
-                }
-                is LibraryExtension -> androidExtension.libraryVariants.all { libraryVariant ->
-                    setupVariant(proguardBlock, libraryVariant, collectConsumerRulesTask, project)?.let {
-                        matchedConfigurations.add(it)
-                    }
-                }
+            if (proguardBlock.configurations.isEmpty()) {
+                throw GradleException("There are no configured variants in the 'dProtect' block")
             }
 
-            proguardBlock.configurations.forEach {
-                checkConfigurationFile(project, it.configurations)
-            }
-
-            (proguardBlock.configurations - matchedConfigurations).apply {
-                if (isNotEmpty()) when (size) {
-                    1 -> throw GradleException("The configured variant '${first().name}' does not exist")
-                    else -> throw GradleException("The configured variants ${joinToString(separator = "', '", prefix = "'", postfix = "'") { it.name }} do not exist")
+            // Verify that user-specified configuration files exist.
+            proguardBlock.configurations.forEach { config ->
+                config.configurations.filterIsInstance<UserProGuardConfiguration>().forEach {
+                    val file = project.file(it.path)
+                    if (!file.exists()) {
+                        throw GradleException("ProGuard configuration file ${file.absolutePath} was set but does not exist.")
+                    }
                 }
             }
         }
     }
+
+    // ──────────────────────────────────────────────
+    // AAPT configuration
+    // ──────────────────────────────────────────────
 
     private fun configureAapt(project: Project) {
-        val createDirectoryTask = project.tasks.register("prepareProguardConfigDirectory", PrepareProguardConfigDirectoryTask::class.java)
-        project.tasks.withType(LinkApplicationAndroidResourcesTask::class.java) {
-            it.dependsOn(createDirectoryTask)
+        val aaptRulesDir = project.buildDir.resolve("intermediates/proguard/configs")
+        val createDirectoryTask =
+            project.tasks.register(
+                "prepareProguardConfigDirectory",
+                PrepareProguardConfigDirectoryTask::class.java,
+            )
+
+        // Create the directory eagerly at configuration time so AAPT can find it
+        // when it runs during resource processing (e.g. processDebugResources).
+        if (!aaptRulesDir.exists()) {
+            aaptRulesDir.mkdirs()
         }
-        if (!androidExtension.aaptAdditionalParameters.contains("--proguard")) {
-            androidExtension.aaptAdditionalParameters.addAll(listOf(
+
+        // Add AAPT flags to generate ProGuard keep rules.
+        val aaptParams = androidExtension.aaptAdditionalParameters
+        if (!aaptParams.contains("--proguard")) {
+            aaptParams.addAll(
+                listOf(
                     "--proguard",
-                    project.buildDir.resolve("intermediates/proguard/configs/aapt_rules.pro").absolutePath)
+                    aaptRulesDir.resolve("aapt_rules.pro").absolutePath,
+                ),
             )
         }
-
-        if (!androidExtension.aaptAdditionalParameters.contains("--proguard-conditional-keep-rules")) {
-            androidExtension.aaptAdditionalParameters.add("--proguard-conditional-keep-rules")
+        if (!aaptParams.contains("--proguard-conditional-keep-rules")) {
+            aaptParams.add("--proguard-conditional-keep-rules")
         }
     }
 
-    private fun setupVariant(proguardBlock: ProGuardAndroidExtension, variant: BaseVariant, collectConsumerRulesTask: TaskProvider<Task>, project: Project): VariantConfiguration? {
-        val matchingConfiguration = proguardBlock.configurations.findVariantConfiguration(variant.name)
-        if (matchingConfiguration != null) {
-            verifyNotMinified(variant)
-            disableAaptOutputCaching(project, variant)
+    // ──────────────────────────────────────────────
+    // Consumer rules
+    // ──────────────────────────────────────────────
 
-            collectConsumerRulesTask.dependsOn(createCollectConsumerRulesTask(
-                    project,
-                    variant,
-                    createConsumerRulesConfiguration(project, variant),
-                    matchingConfiguration.consumerRuleFilter,
-                    project.buildDir.resolve("intermediates/proguard/configs")))
+    private fun createConsumerRulesConfiguration(project: Project, variantName: String): Configuration {
+        val configName = "${variantName}ProGuardConsumerRulesArtifacts"
+        // Remove if it already exists (can happen on re-evaluation).
+        project.configurations.findByName(configName)?.let { project.configurations.remove(it) }
+
+        val runtimeConfig = project.configurations.findByName("${variantName}RuntimeClasspath")
+            ?: project.configurations.findByName("runtimeClasspath")
+
+        return project.configurations.create(configName) { config ->
+            config.isCanBeResolved = true
+            config.isCanBeConsumed = false
+            config.isTransitive = true
+
+            runtimeConfig?.let { config.extendsFrom(it) }
+
+            config.attributes.attribute(ATTRIBUTE_ARTIFACT_TYPE, ARTIFACT_TYPE_CONSUMER_RULES)
         }
-        return matchingConfiguration
     }
 
-    private fun createCollectConsumerRulesTask(
-        project: Project,
-        variant: BaseVariant,
-        inputConfiguration: Configuration,
-        consumerRuleFilter: MutableList<String>,
-        outputDir: File
-    ): TaskProvider<CollectConsumerRulesTask> {
-
-        fun parseConsumerRuleFilter(consumerRuleFilter: List<String>) =
-            consumerRuleFilter.map { filter ->
-                val splits = filter.split(':')
-                if (splits.size != 2) {
-                    throw GradleException("Invalid consumer rule filter entry: ${filter}\nExpected an entry of the form: <group>:<module>")
-                }
-                ConsumerRuleFilterEntry(splits[0], splits[1])
+    private fun parseConsumerRuleFilter(consumerRuleFilter: List<String>): List<ConsumerRuleFilterEntry> =
+        consumerRuleFilter.map { filter ->
+            val splits = filter.split(':')
+            if (splits.size != 2) {
+                throw GradleException(
+                    "Invalid consumer rule filter entry: $filter\nExpected an entry of the form: <group>:<module>",
+                )
             }
-
-        return project.tasks.register(COLLECT_CONSUMER_RULES_TASK_NAME + variant.name.capitalize(), CollectConsumerRulesTask::class.java) {
-            it.consumerRulesConfiguration = inputConfiguration
-            it.consumerRuleFilter = parseConsumerRuleFilter(consumerRuleFilter)
-            it.outputFile = File(File(outputDir, variant.dirName), CONSUMER_RULES_PRO)
-            it.dependsOn(inputConfiguration.buildDependencies)
+            ConsumerRuleFilterEntry(splits[0], splits[1])
         }
+
+    // ──────────────────────────────────────────────
+    // Library jars
+    // ──────────────────────────────────────────────
+
+    /**
+     * Creates the set of library jars for ProGuard's classpath resolution.
+     *
+     * - Apps (Scope.ALL): only provided-only deps + android.jar are library jars
+     *   (everything else is in injars).
+     * - Libraries (Scope.PROJECT): external + sub-project deps + android.jar are library jars
+     *   (only project classes are in injars).
+     */
+    private fun createLibraryJars(project: Project, variantName: String): Any {
+        val files = project.files()
+
+        // android.jar from SDK
+        val androidJar =
+            androidExtension.sdkDirectory
+                ?.resolve("platforms/${androidExtension.compileSdkVersion}/android.jar")
+        if (androidJar != null && androidJar.exists()) {
+            files.from(androidJar)
+        }
+
+        // Optional platform libraries
+        try {
+            androidExtension.libraryRequests.forEach { libRequest ->
+                val optionalJar =
+                    androidExtension.sdkDirectory
+                        ?.resolve(
+                            "platforms/${androidExtension.compileSdkVersion}/optional/${libRequest.name}.jar",
+                        )
+                if (optionalJar != null && optionalJar.exists()) {
+                    files.from(optionalJar)
+                }
+            }
+        } catch (e: Exception) {
+            project.logger.debug("dProtect: Could not access libraryRequests: ${e.message}")
+        }
+
+        // Runtime/provided dependencies as library jars
+        when (projectType) {
+            ANDROID_APPLICATION -> {
+                // For apps, external+sub are in injars (ALL scope).
+                // Only compileOnly (provided) deps are library jars.
+                // In Gradle 8.x, 'compileOnly' has canBeResolved=false, so we
+                // create a resolvable configuration that extends it.
+                val providedConfigName = "dprotect${variantName.replaceFirstChar { it.uppercase() }}Provided"
+                project.configurations.findByName(providedConfigName)?.let { project.configurations.remove(it) }
+                val providedConfig = project.configurations.create(providedConfigName) { config ->
+                    config.isCanBeResolved = true
+                    config.isCanBeConsumed = false
+                    config.isTransitive = true
+                    project.configurations.findByName("compileOnly")?.let { config.extendsFrom(it) }
+                }
+                files.from(providedConfig)
+            }
+            ANDROID_LIBRARY -> {
+                // For libraries, external+sub are library jars (only PROJECT is in injars).
+                val runtimeConfig =
+                    project.configurations.findByName("${variantName}RuntimeClasspath")
+                        ?: project.configurations.findByName("runtimeClasspath")
+                runtimeConfig?.let { files.from(it) }
+            }
+        }
+
+        return files
     }
 
-    private fun createConsumerRulesConfiguration(project: Project, variant: BaseVariant): Configuration =
-        project.configurations.create("${variant.name}ProGuardConsumerRulesArtifacts") {
-            it.isCanBeResolved = true
-            it.isCanBeConsumed = false
-            it.isTransitive = true
-
-            it.extendsFrom(variant.runtimeConfiguration)
-            copyConfigurationAttributes(it, variant.runtimeConfiguration)
-
-            it.attributes.attribute(ATTRIBUTE_ARTIFACT_TYPE, ARTIFACT_TYPE_CONSUMER_RULES)
-        }
-
-    private fun checkConfigurationFile(project: Project, files: List<ProGuardConfiguration>) {
-        files.filterIsInstance<UserProGuardConfiguration>().forEach {
-            val file = project.file(it.path)
-            if (!file.exists()) throw GradleException("ProGuard configuration file ${file.absolutePath} was set but does not exist.")
-        }
-    }
-
-    private fun verifyNotMinified(variant: BaseVariant) {
-        if (variant.buildType.isMinifyEnabled) {
-            throw GradleException(
-                    "The option 'minifyEnabled' is set to 'true' for variant '${variant.name}', but should be 'false' for variants processed by ProGuard")
-        }
-    }
-
-    private fun copyConfigurationAttributes(destConfiguration: Configuration, srcConfiguration: Configuration) {
-        srcConfiguration.attributes.keySet().forEach { attribute ->
-            val attributeValue = srcConfiguration.attributes.getAttribute(attribute)
-            destConfiguration.attributes.attribute(attribute as Attribute<Any>, attributeValue)
-        }
-    }
+    // ──────────────────────────────────────────────
+    // Dependency transforms (unchanged from original)
+    // ──────────────────────────────────────────────
 
     private fun registerDependencyTransforms(project: Project) {
         project.dependencies.registerTransform(ArchiveConsumerRulesTransform::class.java) {
@@ -208,56 +379,40 @@ class AndroidPlugin(private val androidExtension: BaseExtension) : Plugin<Projec
         }
     }
 
-    // TODO: improve loading AAPT rules so that we don't rely on this
-    private fun disableAaptOutputCaching(project: Project, variant: BaseVariant) {
-        val cachingEnabled = project.hasProperty("org.gradle.caching") &&
-                (project.findProperty("org.gradle.caching") as String).toBoolean()
+    // ──────────────────────────────────────────────
+    // Utility
+    // ──────────────────────────────────────────────
 
-        if (cachingEnabled) {
-            // ensure that the aapt_rules.pro has been generated, so ProGuard can use it
-            val processResourcesTask = project.tasks.findByName("process${variant.name.capitalize()}Resources")
-            processResourcesTask?.outputs?.doNotCacheIf("We need to regenerate the aapt_rules.pro file, sorry!") {
-                project.logger.debug("Disabling AAPT caching for ${variant.name}")
-                !project.buildDir.resolve("intermediates/proguard/configs/aapt_rules.pro").exists()
+    private fun verifyNotMinified(project: Project, variantName: String, androidExtension: BaseExtension) {
+        try {
+            // Try to find the build type and check minifyEnabled.
+            val buildTypeName = variantName.substringAfterLast("Debug").substringAfterLast("Release")
+            // This is a best-effort check; if we can't determine minify status, skip.
+            val buildTypes = androidExtension.buildTypes
+            for (buildType in buildTypes) {
+                if (variantName.lowercase().contains(buildType.name.lowercase())) {
+                    if (buildType.isMinifyEnabled) {
+                        throw GradleException(
+                            "The option 'minifyEnabled' is set to 'true' for variant '$variantName', " +
+                                "but should be 'false' for variants processed by dProtect/ProGuard. " +
+                                "Set minifyEnabled false in your build type configuration.",
+                        )
+                    }
+                }
             }
+        } catch (e: GradleException) {
+            throw e
+        } catch (e: Exception) {
+            project.logger.debug("dProtect: Could not verify minify status for $variantName: ${e.message}")
         }
     }
 
-    private fun warnOldProguardVersion(project: Project) {
-        if (agpVersion.majorVersion >= 7) return
-
-        val message =
-"""An older version of ProGuard has been detected on the classpath which can clash with ProGuard Gradle Plugin.
-This is likely due to a transitive dependency introduced by Android Gradle plugin.
-
-Please update your configuration to exclude the old version of ProGuard, for example:
-
-buildscript {
-    // ...
-    dependencies {
-        // ...
-        classpath("com.android.tools.build:gradle:x.y.z") {
-            exclude group: "net.sf.proguard", module: "proguard-gradle"
-            // or for kotlin (build.gradle.kts):
-            // exclude(group = "net.sf.proguard", module = "proguard-gradle")
-        }
-   }
-}"""
-        val proguardTask = Class.forName("proguard.gradle.ProGuardTask")
-        // This method does not exist in the ProGuard version distributed with AGP.
-        // It's used by `ProGuardTransform`, so throw an exception if it doesn't exist.
-        if (proguardTask.methods.count { it.name == "extraJar" } == 0) {
-            throw GradleException(message)
-        }
-
-        // Otherwise, only print a warning since it may or may not cause a problem
-        project.rootProject.buildscript.configurations.all {
-            it.resolvedConfiguration.resolvedArtifacts.find {
-                it.moduleVersion.id.module.group.equals("net.sf.proguard") && it.moduleVersion.id.module.name.equals("proguard-gradle")
-            }?.let {
-                project.logger.warn(message)
-            }
-        }
+    private fun getAaptRulesFile(): String? {
+        val params = androidExtension.aaptAdditionalParameters
+        return params
+            .zipWithNext { cmd, param -> if (cmd == "--proguard") param else null }
+            .filterNotNull()
+            .firstOrNull()
     }
 
     companion object {
@@ -271,36 +426,40 @@ buildscript {
 
 enum class AndroidProjectType {
     ANDROID_APPLICATION,
-    ANDROID_LIBRARY;
+    ANDROID_LIBRARY,
 }
 
-fun Iterable<VariantConfiguration>.findVariantConfiguration(variant: VariantInfo) =
-    find { it.name == variant.fullVariantName } ?: find { it.name == variant.buildTypeName }
+// ──────────────────────────────────────────────────────────────────
+// Variant configuration matching helpers
+// ──────────────────────────────────────────────────────────────────
 
-fun Iterable<VariantConfiguration>.findVariantConfiguration(variantName: String) =
-    find { it.name == variantName } ?: find { variantName.endsWith(it.name.capitalize()) }
+fun Iterable<VariantConfiguration>.findVariantConfiguration(variantName: String): VariantConfiguration? =
+    find { it.name == variantName } ?: find { variantName.endsWith(it.name.replaceFirstChar { c -> c.uppercase() }) }
 
-fun Iterable<VariantConfiguration>.hasVariantConfiguration(variantName: String) =
-        this.findVariantConfiguration(variantName) != null
-
-val agpVersion: Version = Version.valueOf(com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION)
+fun Iterable<VariantConfiguration>.hasVariantConfiguration(variantName: String): Boolean =
+    findVariantConfiguration(variantName) != null
 
 /**
- * Extension property that wraps the aapt additional parameters, to take into account
- * API changes.
+ * Extension property that wraps the aapt additional parameters.
+ *
+ * In AGP 7.0+, [BaseExtension.getAaptOptions] was replaced by [BaseExtension.getAndroidResources].
+ * Since dProtect requires AGP 7.0+ (recommended 8.0+), we always use [getAndroidResources].
  */
 @Suppress("UNCHECKED_CAST")
 val BaseExtension.aaptAdditionalParameters: MutableCollection<String>
     get() {
-        val aaptOptionsGetter = if (agpVersion.majorVersion >= 7) "getAndroidResources" else "getAaptOptions"
-        val aaptOptions = this.javaClass.methods.first { it.name == aaptOptionsGetter }.invoke(this)
-        val additionalParameters = aaptOptions.javaClass.methods.first { it.name == "getAdditionalParameters" }.invoke(aaptOptions)
+        val aaptOptions = this.javaClass.methods.first { it.name == "getAndroidResources" }.invoke(this)
+        val additionalParameters =
+            aaptOptions.javaClass.methods.first { it.name == "getAdditionalParameters" }.invoke(aaptOptions)
         return if (additionalParameters != null) {
             additionalParameters as MutableCollection<String>
         } else {
-            // additionalParameters may be null because AGP 4.0.0 does not set a default empty list
             val newAdditionalParameters = ArrayList<String>()
-            aaptOptions.javaClass.methods.first { it.name == "setAdditionalParameters" }.invoke(aaptOptions, newAdditionalParameters)
+            aaptOptions
+                .javaClass
+                .methods
+                .first { it.name == "setAdditionalParameters" }
+                .invoke(aaptOptions, newAdditionalParameters)
             newAdditionalParameters
         }
     }

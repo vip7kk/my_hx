@@ -1,13 +1,13 @@
-# Building ProGuard
+# Building dProtect
 
 !!! info
 
-    **ProGuard** is distributed under the terms of the GNU General Public License. Please consult the [license page](license/license.md) for more details.
+    **dProtect** is distributed under the terms of the GNU General Public License. Please consult the [license page](license/license.md) for more details.
 
-Building ProGuard is easy - you'll need:
+Building dProtect is easy - you'll need:
 
-* a Java 8 JDK installed
-* a clone of the [ProGuard](https://github.com/Guardsquare/proguard.git) repository
+* a Java 17 JDK installed (required for AGP 8.0+)
+* a clone of the [dProtect](https://github.com/open-obfuscator/dProtect.git) repository
 
 You can then execute a composite build with the following Gradle command:
 

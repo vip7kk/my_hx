@@ -29,10 +29,11 @@ class ConsumerRulesFilterTest : FreeSpec({
                     "app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             android {
-                compileSdkVersion 30
+                namespace 'com.example.app'
+                compileSdk 33
 
                 buildTypes {
                     release {
@@ -41,7 +42,7 @@ class ConsumerRulesFilterTest : FreeSpec({
                 }
             }
 
-            proguard {
+            dProtect {
                 configurations {
                     release {
                         consumerRuleFilter 'filter1', 'filter2'
@@ -66,7 +67,7 @@ class ConsumerRulesFilterTest : FreeSpec({
                     "app", buildDotGradle = """
             plugins {
                 id 'com.android.application'
-                id 'com.guardsquare.proguard'
+                id 're.obfuscator.dprotect'
             }
             
             repositories {
@@ -79,10 +80,11 @@ class ConsumerRulesFilterTest : FreeSpec({
             }
             
             android {
-                compileSdkVersion 29
+                namespace 'com.example.app'
+                compileSdk 33
                 defaultConfig {
-                    targetSdkVersion 30
-                    minSdkVersion 14
+                    targetSdk 33
+                    minSdk 21
                     versionCode 1
                 }
                 buildTypes {
@@ -91,7 +93,7 @@ class ConsumerRulesFilterTest : FreeSpec({
                 }
             }
             
-            proguard {
+            dProtect {
                 configurations {
                     release {
                         defaultConfiguration 'proguard-android.txt'

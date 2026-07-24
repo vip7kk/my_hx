@@ -60,7 +60,7 @@ class ProGuardPluginLegacyAGPIntegrationTest : FreeSpec({
                             }
 
                             android {
-                                compileSdkVersion 30
+                                compileSdk 33
 
                                 buildTypes {
                                     release {
@@ -133,7 +133,7 @@ class ProGuardPluginLegacyAGPIntegrationTest : FreeSpec({
                                 compileSdkVersion 29
                                 defaultConfig {
                                     targetSdkVersion 29
-                                    minSdkVersion 14
+                                    minSdk 21
                                 }
                                 buildTypes {
                                     release {
