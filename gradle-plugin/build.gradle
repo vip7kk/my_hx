@@ -116,18 +116,11 @@ tasks.withType(Test).configureEach {
 }
 
 afterEvaluate {
-    /*  This project gets two publications:
-        - "pluginMaven" is the default from `java-gradle-plugin`
-          and must not be automatically published to remote repos.
-        - "<project.name>" is created by ProGuard custom logic
-          and should have its artifact ID adjusted.
-        - we disable publishing of pluginMaven and plugin markers
-          to Sonatype only, but KEEP GitHub Packages so the
-          plugins { } DSL works with GitHub Packages.
+    /*  Enable pluginMaven and plugin marker publication to GitHub Packages
+        so the plugins { id '...' } DSL works. Only disable Sonatype.
      */
     tasks.withType(AbstractPublishToMaven).matching { task ->
-        task.publication.name == 'pluginMaven' ||
-            task.name =~ /^publish(.*)PluginMarkerMavenPublicationToSonatypeRepository$/
+        task.name =~ /ToSonatypeRepository$/
     } each {task ->
         task.enabled = false
     }
