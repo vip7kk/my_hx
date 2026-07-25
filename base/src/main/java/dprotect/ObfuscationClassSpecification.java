@@ -10,6 +10,13 @@ public class ObfuscationClassSpecification extends ClassSpecification
 
     public final Level obfuscationLvl;
 
+    /**
+     * Per-target junk-method count. Only meaningful for {@code -obfuscate-junk}
+     * specifications. {@code -1} means "use the global {@code configuration.junkCount}
+     * default" (backward compatible with the single global count).
+     */
+    public int count = -1;
+
     public ObfuscationClassSpecification(ClassSpecification classSpecification,
                                          Level level)
     {

@@ -7,6 +7,7 @@ import dprotect.obfuscation.strings.StringObfuscationMarker;
 import dprotect.obfuscation.arithmetic.ArithmeticObfuscationMarker;
 import dprotect.obfuscation.constants.ConstantObfuscationMarker;
 import dprotect.obfuscation.controlflow.ControlFlowObfuscationMarker;
+import dprotect.obfuscation.junk.JunkObfuscationMarker;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -43,7 +44,8 @@ public class Marker implements Pass
                 createStringObfuscationMarker(configuration),
                 createCFObfuscationMarker(configuration),
                 createArithmeticObfuscationMarker(configuration),
-                createConstantsObfuscationMarker(configuration)
+                createConstantsObfuscationMarker(configuration),
+                createJunkObfuscationMarker(configuration)
             );
 
         appView.programClassPool.accept(classPoolVisitor);
@@ -89,6 +91,16 @@ public class Marker implements Pass
                                     (spec) -> { return new ControlFlowObfuscationMarker(spec); },
                                     /* Member Visitor */
                                     (spec) -> { return new ControlFlowObfuscationMarker(spec); });
+    }
+
+    private ClassPoolVisitor createJunkObfuscationMarker(Configuration configuration)
+    {
+        return new ClassObfuSpecVisitorFactory()
+            .createClassPoolVisitor(configuration.obfuscateJunk,
+                                    /* Class Visitor */
+                                    (spec) -> { return new JunkObfuscationMarker(spec); },
+                                    /* Member Visitor */
+                                    (spec) -> { return new JunkObfuscationMarker(spec); });
     }
 
 }

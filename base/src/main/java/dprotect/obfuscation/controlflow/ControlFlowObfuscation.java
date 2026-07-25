@@ -253,14 +253,26 @@ implements   ClassVisitor,
                                                     nameIndex, descriptorIndex, null);
         classEditor.addField(opaqueField);
 
-        final int value = getInvariantValue(Integer.MAX_VALUE - 1);
-
+        // Initialize OPAQUE_FIELD_0 with a *runtime-unknown but always even*
+        // value: t*t - t == t*(t-1), which is even for every t.
+        //
+        // The previous implementation stored a compile-time constant
+        // (getInvariantValue(...)), which the ProGuard optimizer could constant-
+        // fold; it would then evaluate the opaque predicates (e.g. (X+1)%2) to a
+        // constant and strip the whole GOTO rewriting, undoing the pass. Deriving
+        // the seed from System.currentTimeMillis() keeps the value opaque to the
+        // optimizer (mirrors the junk pass's `jo` field), so the predicates and
+        // the flattened control-flow survive into the final dex.
         new InitializerEditor(programClass).addStaticInitializerInstructions(/*mergeIntoExistingInitializer=*/true,
-            /* Initialize OPAQUE_FIELD_0 with the invariant */
-            ____ -> {
-                ____.ldc(value)
-                    .putstatic(programClass, opaqueField);
-            });
+            ____ -> ____
+                .invokestatic("java/lang/System", "currentTimeMillis", "()J")
+                .l2i()                 // t
+                .dup()                 // t, t
+                .dup()                 // t, t, t
+                .imul()                // t, t*t
+                .swap()                // t*t, t
+                .isub()                // t*t - t  (always even, runtime-unknown)
+                .putstatic(programClass.getName(), OPAQUE_FIELD_0, "I"));
     }
 
     /*

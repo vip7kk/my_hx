@@ -5,6 +5,7 @@ import dprotect.obfuscation.arithmetic.*;
 import dprotect.obfuscation.constants.*;
 import dprotect.obfuscation.controlflow.*;
 import dprotect.obfuscation.info.ObfuscationInfo;
+import dprotect.obfuscation.junk.*;
 import dprotect.obfuscation.strings.*;
 
 import java.io.*;
@@ -32,7 +33,6 @@ public class CodeObfuscator implements Pass
     private static final String OBFUSCATION_STRING         = "obfuscation/string";
     private static final String OBFUSCATION_ARITHMETIC_MBA = "obfuscation/arithmetic/mba";
     private static final String OBFUSCATION_CONSTANTS      = "obfuscation/constants";
-    private static final String OBFUSCATION_CONTROL_FLOW   = "obfuscation/controlflow";
 
     private final Configuration configuration;
 
@@ -40,6 +40,7 @@ public class CodeObfuscator implements Pass
     private boolean codeObfuscationArithmeticMba;
     private boolean codeObfuscationConstants;
     private boolean codeObfuscationControlFlow;
+    private boolean codeObfuscationJunk;
 
     public CodeObfuscator(Configuration configuration)
     {
@@ -60,7 +61,17 @@ public class CodeObfuscator implements Pass
         codeObfuscationString        = filter.matches(OBFUSCATION_STRING);
         codeObfuscationArithmeticMba = filter.matches(OBFUSCATION_ARITHMETIC_MBA);
         codeObfuscationConstants     = filter.matches(OBFUSCATION_CONSTANTS);
-        codeObfuscationControlFlow   = filter.matches(OBFUSCATION_CONTROL_FLOW);
+        // Control-flow is enabled whenever a -obfuscate-control-flow directive
+        // is present (typically written in proguard-rules.pro), independently of
+        // the -obfuscations filter. The per-class marker (info.controlflow !=
+        // null) already restricts the pass to the targeted classes, so this gate
+        // only skips the whole pass when no directive exists. This mirrors how
+        // junk is gated on -obfuscate-junk.
+        codeObfuscationControlFlow   = configuration.obfuscateControlFlow != null;
+        // Junk code is enabled whenever a -obfuscate-junk directive is present
+        // (emitted by the dProtect { obfuscation { junk = true } } DSL block),
+        // independently of the -obfuscations filter.
+        codeObfuscationJunk          = configuration.obfuscateJunk != null;
 
         logger.info("Applying code obfuscation ...");
 
@@ -121,6 +132,13 @@ public class CodeObfuscator implements Pass
             runConstantsObfuscation(configuration,
                                     programClassPool, libraryClassPool,
                                     extraDataEntryNameMap);
+        }
+
+        if (codeObfuscationJunk)
+        {
+            runJunkObfuscation(configuration,
+                               programClassPool, libraryClassPool,
+                               extraDataEntryNameMap);
         }
 
         programClassPool.accept(new AllClassVisitor(
@@ -274,6 +292,46 @@ public class CodeObfuscator implements Pass
                     }
                     ClassVisitor apply(ClassVisitor obfuscator) { this.obfuscator = obfuscator; return this; }
                 }.apply(new ConstantsObfuscator(configuration.seed))));
+    }
+
+    private void runJunkObfuscation(Configuration         configuration,
+                                    ClassPool             programClassPool,
+                                    ClassPool             libraryClassPool,
+                                    ExtraDataEntryNameMap extraDataEntryNameMap)
+    {
+        logger.info("dProtect: Injecting junk code ...");
+
+        final int[] counters = new int[3]; // [0]=classes visited, [1]=classes flagged junk, [2]=classes injected
+
+        programClassPool.accept(
+                new AllClassVisitor(
+                new ClassVisitor() {
+                    /*
+                     * Early filter classes that are flagged with 'obfuscate-junk',
+                     * injecting the per-target junk count when available.
+                     */
+                    @Override
+                    public void visitAnyClass(Clazz clazz)
+                    {
+                        counters[0]++;
+                        ObfuscationInfo info = ObfuscationInfo.getObfuscationInfo(clazz);
+                        if (info.junk)
+                        {
+                            counters[1]++;
+                            int count = (info.junkCount > 0)
+                                        ? info.junkCount
+                                        : configuration.junkCount;
+                            new JunkCodeObfuscation(configuration.seed,
+                                                    programClassPool,
+                                                    libraryClassPool,
+                                                    count).visitAnyClass(clazz);
+                            counters[2]++;
+                        }
+                    }
+                }));
+
+        logger.info("dProtect: Junk injection summary - visited {} program classes, {} flagged for junk, {} injected.",
+                    counters[0], counters[1], counters[2]);
     }
 
 }

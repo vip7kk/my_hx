@@ -97,6 +97,14 @@ jacocoTestReport {
 }
 
 afterEvaluate {
+    /*  Disable Sonatype publish tasks (we only publish to GitHub Packages).
+        Mirrors the same block in gradle-plugin/build.gradle. */
+    tasks.withType(AbstractPublishToMaven).matching { task ->
+        task.name =~ /ToSonatypeRepository$/
+    } each { task ->
+        task.enabled = false
+    }
+
     publishing {
         publications.getByName(project.name) {
             pom {

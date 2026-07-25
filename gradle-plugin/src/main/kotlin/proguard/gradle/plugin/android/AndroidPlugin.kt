@@ -38,6 +38,7 @@ import proguard.gradle.plugin.android.AndroidProjectType.ANDROID_APPLICATION
 import proguard.gradle.plugin.android.AndroidProjectType.ANDROID_LIBRARY
 import proguard.gradle.plugin.android.dsl.ProGuardAndroidExtension
 import proguard.gradle.plugin.android.dsl.ProGuardConfiguration
+import proguard.gradle.plugin.android.dsl.ObfuscationConfig
 import proguard.gradle.plugin.android.dsl.UserProGuardConfiguration
 import proguard.gradle.plugin.android.dsl.VariantConfiguration
 import proguard.gradle.plugin.android.tasks.CollectConsumerRulesTask
@@ -138,6 +139,32 @@ class AndroidPlugin(
 
                 collectConsumerRulesTask.configure { it.dependsOn(collectTask) }
 
+                // ── dProtect obfuscation { } block: generate junk + control-flow directives ──
+                // Registered as a real task (not at configuration time) so that a `clean`
+                // build still regenerates it before the ProGuard task consumes it.
+                val obfuscationContent = buildObfuscationProContent(proguardBlock.obfuscation)
+                val obfuscationGenTask: TaskProvider<*>? =
+                    if (obfuscationContent != null) {
+                        val proFile = project.layout.buildDirectory.file(
+                            "intermediates/proguard/dprotect-obfuscation/$variantName.pro")
+                        project.tasks.register(
+                            "generateDprotectObfuscationPro" +
+                                variantName.replaceFirstChar { it.uppercase() }) { task ->
+                            task.outputs.file(proFile)
+                            task.doLast {
+                                proFile.get().asFile.apply {
+                                    parentFile.mkdirs()
+                                    writeText(obfuscationContent)
+                                }
+                                project.logger.info(
+                                    "dProtect: generated obfuscation configuration: ${proFile.get().asFile.absolutePath}")
+                                project.logger.info("dProtect:   content:\n$obfuscationContent")
+                            }
+                        }
+                    } else {
+                        null
+                    }
+
                 // ── ProGuard obfuscation task ──
                 val taskName = "proguard" + variantName.replaceFirstChar { it.uppercase() }
                 val taskProvider =
@@ -148,6 +175,17 @@ class AndroidPlugin(
                         task.configurationFiles.from(
                             matchingConfiguration.configurations.map { project.file(it.path) },
                         )
+
+                        // ── dProtect obfuscation { } block: auto-generate junk + control-flow directives ──
+                        // The generation task is registered at the onVariants top level
+                        // (see above); here we make proguardDebug depend on it and wire
+                        // its output into the config set so the file is always written
+                        // before ProGuard parses it (a plain `from(...)` on a provider is
+                        // not enough to guarantee ordering).
+                        if (obfuscationGenTask != null) {
+                            task.dependsOn(obfuscationGenTask)
+                            task.configurationFiles.from(obfuscationGenTask.map { it.outputs.files })
+                        }
 
                         // Consumer rules output (depends on collection task).
                         task.consumerRules.from(collectTask.map { it.outputs.files })
@@ -413,6 +451,44 @@ class AndroidPlugin(
             .zipWithNext { cmd, param -> if (cmd == "--proguard") param else null }
             .filterNotNull()
             .firstOrNull()
+    }
+
+    // ──────────────────────────────────────────────
+    // dProtect obfuscation { } block -> ProGuard directives
+    // ──────────────────────────────────────────────
+
+    /**
+     * Builds the ProGuard configuration snippet emitted by the
+     * [ObfuscationConfig] block (junk-code and control-flow directives).
+     * Returns null when both features are disabled, so the caller can skip
+     * registering the generation task entirely.
+     *
+     * The generated directives look like:
+     * <pre>
+     *     -obfuscate-junk,8 class **
+     *     -obfuscate-control-flow class com.example.**
+     * </pre>
+     * Both passes are gated by the presence of their directive (not by the
+     * `-obfuscations` filter), so enabling them here never changes the gating
+     * of the other dProtect passes (string / arithmetic / constants).
+     */
+    private fun buildObfuscationProContent(config: ObfuscationConfig): String? {
+        val directives = mutableListOf<String>()
+
+        if (config.isJunkEnabled()) {
+            val count = if (config.junkConfig.count > 0) config.junkConfig.count else config.effectiveJunkCount()
+            // Prefer the flat junkTarget property; the nested junkPass { target }
+            // is kept for compatibility but leaks the delegate in Groovy.
+            val target = config.junkTarget ?: config.junkConfig.target ?: config.target
+            directives += "-obfuscate-junk,$count $target"
+        }
+
+        if (directives.isEmpty()) {
+            return null
+        }
+
+        return "# Auto-generated by dProtect obfuscation { } block\n" +
+               directives.joinToString("\n") { it } + "\n"
     }
 
     companion object {

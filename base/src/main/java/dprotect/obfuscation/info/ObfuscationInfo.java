@@ -16,6 +16,20 @@ public class ObfuscationInfo
     public ConstantObfuscationInfo    constants     = null;
     public ControlFlowObfuscationInfo controlflow   = null;
 
+    /**
+     * Whether junk (dead / fake) code must be injected into this class.
+     * Set by {@link dprotect.obfuscation.junk.JunkObfuscationMarker}.
+     */
+    public boolean                    junk          = false;
+
+    /**
+     * Number of junk methods to inject into this class. {@code -1} means
+     * "use the global {@code configuration.junkCount} default". Set by
+     * {@link dprotect.obfuscation.junk.JunkObfuscationMarker} from the matching
+     * {@code -obfuscate-junk} specification's per-target count.
+     */
+    public int                        junkCount     = -1;
+
     public static void setClassObfuscationInfo(Clazz clazz) {
         clazz.setObfuscationInfo(new ObfuscationInfo());
     }

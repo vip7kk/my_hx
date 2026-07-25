@@ -166,7 +166,6 @@ public class ConfigurationParser extends proguard.ConfigurationParser
             else if (ConfigurationConstants.PRINT_CONFIGURATION_OPTION                       .startsWith(nextWord)) configuration.printConfiguration                    = super.parseOptionalFile();
             else if (ConfigurationConstants.DUMP_OPTION                                      .startsWith(nextWord)) configuration.dump                                  = super.parseOptionalFile();
             else if (ConfigurationConstants.ADD_CONFIGURATION_DEBUGGING_OPTION               .startsWith(nextWord)) configuration.addConfigurationDebugging             = super.parseNoArgument(true);
-            else if (ConfigurationConstants.OPTIMIZE_AGGRESSIVELY                            .startsWith(nextWord)) configuration.optimizeConservatively                = parseNoArgument(false);
             else
             {
                 parseObfuscationConfig(configuration);
@@ -186,6 +185,7 @@ public class ConfigurationParser extends proguard.ConfigurationParser
         else if (ConfigurationConstants.OBFUSCATE_ARITHMETIC                             .startsWith(nextWord)) parseArithmeticOpt(configuration);
         else if (ConfigurationConstants.OBFUSCATE_CONSTANTS                              .startsWith(nextWord)) parseConstantsOpt(configuration);
         else if (ConfigurationConstants.OBFUSCATE_CONTROL_FLOW                           .startsWith(nextWord)) parseControlFlowOpt(configuration);
+        else if (ConfigurationConstants.OBFUSCATE_JUNK                                   .startsWith(nextWord)) parseJunkOpt(configuration);
         else
         {
             throw new ParseException("Unknown option " + reader.locationDescription());
@@ -345,6 +345,60 @@ public class ConfigurationParser extends proguard.ConfigurationParser
 
         configuration.obfuscateControlFlow.add(
                 new CFObfuscationClassSpecification(classSpecification, level));
+    }
+
+    /*
+     * Parse the -obfuscate-junk option.
+     *
+     *   -obfuscate-junk,5 class **
+     *
+     * The optional leading integer (after the comma) is the number of junk
+     * methods injected per matched class. When omitted, the default
+     * (configuration.junkCount = 3) is used.
+     */
+    private void parseJunkOpt(Configuration configuration)
+    throws ParseException, IOException
+    {
+        // Default to the global count; the per-line comma modifier overrides it.
+        int count = (configuration.junkCount > 0) ? configuration.junkCount : 3;
+
+        // Parse optional comma-separated modifiers before the class keyword.
+        while (true)
+        {
+            readNextWord("keyword '" + ConfigurationConstants.CLASS_KEYWORD +
+                         "', '"      + JavaAccessConstants.INTERFACE +
+                         "', or '"   + JavaAccessConstants.ENUM + "'",
+                         false, false, true);
+
+            if (!ConfigurationConstants.ARGUMENT_SEPARATOR_KEYWORD.equals(nextWord))
+            {
+                break;
+            }
+
+            readNextWord("junk method count (integer)");
+            try
+            {
+                count = Integer.parseInt(nextWord);
+            }
+            catch (NumberFormatException e)
+            {
+                // Not an integer modifier we recognize; leave count unchanged.
+            }
+        }
+
+        ClassSpecification classSpecification =
+            parseClassSpecificationArguments(false, true, false);
+
+        if (configuration.obfuscateJunk == null) {
+            configuration.obfuscateJunk = new ArrayList<ObfuscationClassSpecification>();
+        }
+
+        // Store the count on the per-target spec so each class group can have
+        // its own junk-method count (-1 would mean "use the global default").
+        ObfuscationClassSpecification spec =
+            new ObfuscationClassSpecification(classSpecification);
+        spec.count = Math.max(1, count);
+        configuration.obfuscateJunk.add(spec);
     }
 
 }

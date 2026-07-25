@@ -56,6 +56,18 @@ public class Configuration extends proguard.Configuration
      */
     public List<String>                                  obfuscateStringsList;
 
+    /**
+     * List of classes into which junk (dead / fake) methods must be injected.
+     */
+    public List<ObfuscationClassSpecification>           obfuscateJunk;
+
+    /**
+     * Global default number of junk methods injected per flagged class.
+     * Overridden per-target by the optional {@code ,count} modifier of
+     * {@code -obfuscate-junk,count class **}.
+     */
+    public int                                           junkCount = 3;
+
 
     /**
      * Seed used for the random generator of obfuscation passes

@@ -21,9 +21,16 @@
 
 package proguard.gradle.plugin.android.dsl
 
+import org.gradle.api.Action
 import org.gradle.api.NamedDomainObjectContainer
 import org.gradle.api.Project
 
 open class ProGuardAndroidExtension(project: Project) {
     val configurations: NamedDomainObjectContainer<VariantConfiguration> = project.container(VariantConfiguration::class.java)
+
+    /** dProtect obfuscation settings (junk code, strength, target, ...). */
+    val obfuscation: ObfuscationConfig = ObfuscationConfig()
+
+    /** Groovy/Kotlin DSL entry point: {@code dProtect { obfuscation { ... } } }. */
+    fun obfuscation(action: Action<in ObfuscationConfig>) { action.execute(obfuscation) }
 }

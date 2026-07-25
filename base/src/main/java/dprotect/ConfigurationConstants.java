@@ -8,6 +8,7 @@ public class ConfigurationConstants extends proguard.ConfigurationConstants
     public static final String OBFUSCATE_ARITHMETIC   = "-obfuscate-arithmetic";
     public static final String OBFUSCATE_CONSTANTS    = "-obfuscate-constants";
     public static final String OBFUSCATE_CONTROL_FLOW = "-obfuscate-control-flow";
+    public static final String OBFUSCATE_JUNK         = "-obfuscate-junk";
 
     public static final String OBFUCATION_LEVEL_LOW    = "low";
     public static final String OBFUCATION_LEVEL_MEDIUM = "medium";
