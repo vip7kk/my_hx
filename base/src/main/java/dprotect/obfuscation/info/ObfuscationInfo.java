@@ -30,6 +30,13 @@ public class ObfuscationInfo
      */
     public int                        junkCount     = -1;
 
+    /**
+     * Whether the methods of this class must be split into a rename-based
+     * trampoline (forwarding stub + renamed private real body). Set by
+     * {@link dprotect.obfuscation.methodsplit.MethodSplitObfuscationMarker}.
+     */
+    public boolean                    methodSplit   = false;
+
     public static void setClassObfuscationInfo(Clazz clazz) {
         clazz.setObfuscationInfo(new ObfuscationInfo());
     }

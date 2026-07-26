@@ -186,6 +186,7 @@ public class ConfigurationParser extends proguard.ConfigurationParser
         else if (ConfigurationConstants.OBFUSCATE_CONSTANTS                              .startsWith(nextWord)) parseConstantsOpt(configuration);
         else if (ConfigurationConstants.OBFUSCATE_CONTROL_FLOW                           .startsWith(nextWord)) parseControlFlowOpt(configuration);
         else if (ConfigurationConstants.OBFUSCATE_JUNK                                   .startsWith(nextWord)) parseJunkOpt(configuration);
+        else if (ConfigurationConstants.OBFUSCATE_METHOD_SPLIT                           .startsWith(nextWord)) parseMethodSplitOpt(configuration);
         else
         {
             throw new ParseException("Unknown option " + reader.locationDescription());
@@ -399,6 +400,34 @@ public class ConfigurationParser extends proguard.ConfigurationParser
             new ObfuscationClassSpecification(classSpecification);
         spec.count = Math.max(1, count);
         configuration.obfuscateJunk.add(spec);
+    }
+
+    /*
+     * Parse the -obfuscate-method-split option. This option does not currently
+     * support extra modifiers.
+     *
+     *   -obfuscate-method-split class **
+     *
+     * The code of this pass is highly inspired from
+     * proguard.ConfigurationParser.parseKeepClassSpecificationArguments
+     */
+    private void parseMethodSplitOpt(Configuration configuration)
+    throws ParseException, IOException
+    {
+        readNextWord("keyword '" + ConfigurationConstants.CLASS_KEYWORD +
+                     "', '"      + JavaAccessConstants.INTERFACE +
+                     "', or '"   + JavaAccessConstants.ENUM + "'",
+                     false, false, true);
+
+        ClassSpecification classSpecification =
+            parseClassSpecificationArguments(false, true, false);
+
+        if (configuration.obfuscateMethodSplit == null) {
+            configuration.obfuscateMethodSplit = new ArrayList<ObfuscationClassSpecification>();
+        }
+
+        configuration.obfuscateMethodSplit.add(
+                new ObfuscationClassSpecification(classSpecification));
     }
 
 }

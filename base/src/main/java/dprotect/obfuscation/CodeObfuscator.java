@@ -6,6 +6,7 @@ import dprotect.obfuscation.constants.*;
 import dprotect.obfuscation.controlflow.*;
 import dprotect.obfuscation.info.ObfuscationInfo;
 import dprotect.obfuscation.junk.*;
+import dprotect.obfuscation.methodsplit.*;
 import dprotect.obfuscation.strings.*;
 
 import java.io.*;
@@ -41,6 +42,7 @@ public class CodeObfuscator implements Pass
     private boolean codeObfuscationConstants;
     private boolean codeObfuscationControlFlow;
     private boolean codeObfuscationJunk;
+    private boolean codeObfuscationMethodSplit;
 
     public CodeObfuscator(Configuration configuration)
     {
@@ -72,6 +74,11 @@ public class CodeObfuscator implements Pass
         // (emitted by the dProtect { obfuscation { junk = true } } DSL block),
         // independently of the -obfuscations filter.
         codeObfuscationJunk          = configuration.obfuscateJunk != null;
+        // Method splitting is enabled whenever a -obfuscate-method-split directive
+        // is present (typically written in proguard-rules.pro), independently of
+        // the -obfuscations filter. The per-class marker (info.methodSplit)
+        // restricts the pass to the targeted classes.
+        codeObfuscationMethodSplit   = configuration.obfuscateMethodSplit != null;
 
         logger.info("Applying code obfuscation ...");
 
@@ -104,6 +111,17 @@ public class CodeObfuscator implements Pass
          */
         {
             programClassPool.classesAccept(new PrimitiveArrayConstantReplacer());
+        }
+
+        // Method splitting runs FIRST: it rewrites the class member table
+        // (renaming real bodies + inserting forwarding stubs) before any of the
+        // body-rewriting passes touch the code, so those passes then operate on
+        // the already-split methods too.
+        if (codeObfuscationMethodSplit)
+        {
+            runMethodSplitObfuscation(configuration,
+                                      programClassPool, libraryClassPool,
+                                      extraDataEntryNameMap);
         }
 
         if (codeObfuscationString)
@@ -332,6 +350,38 @@ public class CodeObfuscator implements Pass
 
         logger.info("dProtect: Junk injection summary - visited {} program classes, {} flagged for junk, {} injected.",
                     counters[0], counters[1], counters[2]);
+    }
+
+    private void runMethodSplitObfuscation(Configuration         configuration,
+                                           ClassPool             programClassPool,
+                                           ClassPool             libraryClassPool,
+                                           ExtraDataEntryNameMap extraDataEntryNameMap)
+    {
+        logger.info("dProtect: Splitting methods (rename-based trampoline) ...");
+
+        final int[] counters = new int[2]; // [0]=classes flagged, [1]=methods split
+
+        final MethodSplitObfuscation splitter =
+            new MethodSplitObfuscation(configuration.seed, programClassPool, libraryClassPool);
+
+        programClassPool.accept(
+                new AllClassVisitor(
+                new ClassVisitor() {
+                    @Override
+                    public void visitAnyClass(Clazz clazz)
+                    {
+                        if (ObfuscationInfo.getObfuscationInfo(clazz).methodSplit)
+                        {
+                            counters[0]++;
+                            splitter.visitAnyClass(clazz);
+                        }
+                    }
+                }));
+
+        counters[1] = splitter.getSplitCount();
+
+        logger.info("dProtect: Method-split summary - {} classes flagged, {} methods split.",
+                    counters[0], counters[1]);
     }
 
 }

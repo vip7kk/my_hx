@@ -62,6 +62,12 @@ public class Configuration extends proguard.Configuration
     public List<ObfuscationClassSpecification>           obfuscateJunk;
 
     /**
+     * List of classes whose methods must be split into a rename-based
+     * trampoline (forwarding stub + renamed private real body).
+     */
+    public List<ObfuscationClassSpecification>           obfuscateMethodSplit;
+
+    /**
      * Global default number of junk methods injected per flagged class.
      * Overridden per-target by the optional {@code ,count} modifier of
      * {@code -obfuscate-junk,count class **}.
